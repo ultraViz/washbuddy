@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Car, Clock, RefreshCw, ArrowRight, CheckCircle2, Droplets, Sparkles } from "lucide-react";
+import { Car, Clock, RefreshCw, ArrowRight, CheckCircle2, Droplets, Sparkles, Info, Phone, User } from "lucide-react";
 import Link from "next/link";
 
 type QueueItem = {
@@ -78,6 +78,7 @@ export default function AgentPage() {
   const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [totalAmount, setTotalAmount] = useState("");
   const [advancing, setAdvancing] = useState<string | null>(null);
+  const [infoItem, setInfoItem] = useState<QueueItem | null>(null);
 
   const fetchQueue = useCallback(async () => {
     try {
@@ -227,7 +228,7 @@ export default function AgentPage() {
                 {colItems.map(item => (
                   <Card key={item.id} className={`border ${col.border} shadow-sm hover:shadow-md transition-all duration-200`}>
                     <CardContent className="p-4 space-y-3">
-                      {/* Plate + price */}
+                      {/* Plate + price + info */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <div className={`w-7 h-7 rounded-md ${col.bg} flex items-center justify-center shrink-0`}>
@@ -238,9 +239,18 @@ export default function AgentPage() {
                             <p className="text-xs text-muted-foreground">{item.vehicleType ?? "—"}</p>
                           </div>
                         </div>
-                        <Badge variant="outline" className="text-xs font-semibold shrink-0">
-                          R{item.servicePrice}
-                        </Badge>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => setInfoItem(item)}
+                            className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-accent transition-colors"
+                            title="Owner info"
+                          >
+                            <Info size={14} />
+                          </button>
+                          <Badge variant="outline" className="text-xs font-semibold">
+                            R{item.servicePrice}
+                          </Badge>
+                        </div>
                       </div>
 
                       {/* Service + owner */}
@@ -291,7 +301,16 @@ export default function AgentPage() {
             {completed.slice(0, 10).map(item => (
               <Card key={item.id} className="border-green-100 bg-green-50/50">
                 <CardContent className="p-3">
-                  <p className="font-semibold text-sm text-foreground">{item.licensePlate}</p>
+                  <div className="flex items-start justify-between gap-1">
+                    <p className="font-semibold text-sm text-foreground">{item.licensePlate}</p>
+                    <button
+                      onClick={() => setInfoItem(item)}
+                      className="p-0.5 rounded text-muted-foreground hover:text-primary transition-colors shrink-0"
+                      title="Owner info"
+                    >
+                      <Info size={13} />
+                    </button>
+                  </div>
                   <p className="text-xs text-muted-foreground truncate">{item.serviceName}</p>
                   <div className="flex items-center justify-between mt-2">
                     <p className="text-sm font-bold text-green-700">R{item.totalAmount ?? item.servicePrice}</p>
@@ -303,6 +322,45 @@ export default function AgentPage() {
           </div>
         </div>
       )}
+
+      {/* Owner info dialog */}
+      <Dialog open={!!infoItem} onOpenChange={() => setInfoItem(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Car size={16} className="text-primary" />
+              {infoItem?.licensePlate}
+            </DialogTitle>
+            <DialogDescription>{infoItem?.vehicleType ?? "Unknown vehicle type"}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+              <User size={16} className="text-muted-foreground shrink-0" />
+              <div>
+                <p className="text-xs text-muted-foreground">Owner</p>
+                <p className="font-semibold text-foreground">{infoItem?.ownerName ?? "—"}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+              <Phone size={16} className="text-muted-foreground shrink-0" />
+              <div>
+                <p className="text-xs text-muted-foreground">Phone</p>
+                {infoItem?.ownerPhone
+                  ? <a href={`tel:${infoItem.ownerPhone}`} className="font-semibold text-primary">{infoItem.ownerPhone}</a>
+                  : <p className="font-semibold text-foreground">—</p>
+                }
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+              <Info size={16} className="text-muted-foreground shrink-0" />
+              <div>
+                <p className="text-xs text-muted-foreground">Service</p>
+                <p className="font-semibold text-foreground">{infoItem?.serviceName} — <span className="text-primary">R{infoItem?.servicePrice}</span></p>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Complete / payment dialog */}
       <Dialog open={!!completingItem} onOpenChange={() => setCompletingItem(null)}>
