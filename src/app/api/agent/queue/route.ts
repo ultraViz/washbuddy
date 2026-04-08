@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { logActivity } from "@/lib/log";
+import { notifyOwner } from "@/lib/whatsapp";
 
 export async function GET() {
   const session = await auth();
@@ -116,14 +117,16 @@ export async function POST(request: Request) {
   if (qErr) return Response.json({ error: qErr.message }, { status: 500 });
 
   const agentName = (session.user as any)?.name ?? "Unknown";
+  const { data: svc } = await supabase.from("services").select("name").eq("id", serviceId).maybeSingle();
+
   logActivity({
-    businessId: businessId,
+    businessId,
     agentName,
     action: "CHECK_IN",
-    description: `Checked in ${plate} for ${
-      (await supabase.from("services").select("name").eq("id", serviceId).maybeSingle()).data?.name ?? "service"
-    }${vehicleType ? ` (${vehicleType})` : ""}${ownerName ? ` — owner: ${ownerName}` : ""}`,
+    description: `Checked in ${plate} for ${svc?.name ?? "service"}${vehicleType ? ` (${vehicleType})` : ""}${ownerName ? ` — owner: ${ownerName}` : ""}`,
   });
+
+  notifyOwner({ ownerPhone: ownerPhone ?? null, licensePlate: plate, status: "IN_QUEUE" });
 
   return Response.json({ id: item.id }, { status: 201 });
 }

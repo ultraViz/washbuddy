@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { logActivity } from "@/lib/log";
+import { notifyOwner } from "@/lib/whatsapp";
 
 const STATUS_ORDER = ["IN_QUEUE", "WASH_BAY", "FINISHING_BAY", "COMPLETED"];
 
@@ -19,15 +20,16 @@ export async function PATCH(
 
   const { data: item } = await supabase
     .from("queue_items")
-    .select("status, vehicles(license_plate), services(name)")
+    .select("status, vehicles(license_plate, owner_phone), services(name)")
     .eq("id", id)
     .eq("business_id", businessId)
     .maybeSingle();
 
   if (!item) return Response.json({ error: "Not found" }, { status: 404 });
 
-  const agentName = (session.user as any)?.name ?? "Unknown";
-  const plate = (item as any).vehicles?.license_plate ?? "?";
+  const agentName   = (session.user as any)?.name ?? "Unknown";
+  const plate       = (item as any).vehicles?.license_plate ?? "?";
+  const ownerPhone  = (item as any).vehicles?.owner_phone ?? null;
   const serviceName = (item as any).services?.name ?? "service";
 
   if (action === "advance") {
@@ -62,6 +64,8 @@ export async function PATCH(
         ? `Completed ${plate} (${serviceName}) — R${totalAmount ?? ""} via ${paymentMethod ?? "cash"}`
         : `Moved ${plate} (${serviceName}) to ${statusLabel[nextStatus] ?? nextStatus}`,
     });
+
+    notifyOwner({ ownerPhone, licensePlate: plate, status: nextStatus });
 
     return Response.json({ status: nextStatus });
   }
