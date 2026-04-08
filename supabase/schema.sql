@@ -37,11 +37,13 @@ CREATE TABLE IF NOT EXISTS agents (
 );
 
 CREATE TABLE IF NOT EXISTS vehicles (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  license_plate TEXT NOT NULL UNIQUE,
-  owner_name    TEXT,
-  owner_phone   TEXT,
-  vehicle_type  TEXT
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  license_plate   TEXT NOT NULL UNIQUE,
+  owner_name      TEXT,
+  owner_phone     TEXT,
+  vehicle_type    TEXT,
+  car_make        TEXT,
+  car_description TEXT
 );
 
 CREATE TABLE IF NOT EXISTS queue_items (

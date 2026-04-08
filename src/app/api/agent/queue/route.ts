@@ -53,7 +53,7 @@ export async function POST(request: Request) {
   if (!businessId) return Response.json({ error: "No business" }, { status: 400 });
 
   const body = await request.json();
-  const { licensePlate, ownerName, ownerPhone, vehicleType, serviceId } = body;
+  const { licensePlate, ownerName, ownerPhone, vehicleType, carMake, carDescription, serviceId } = body;
 
   if (!licensePlate || !serviceId) {
     return Response.json({ error: "licensePlate and serviceId are required" }, { status: 400 });
@@ -71,17 +71,26 @@ export async function POST(request: Request) {
 
   if (existing) {
     vehicleId = existing.id;
-    if (ownerName || ownerPhone || vehicleType) {
+    if (ownerName || ownerPhone || vehicleType || carMake || carDescription) {
       await supabase.from("vehicles").update({
-        ...(ownerName   ? { owner_name:    ownerName }   : {}),
-        ...(ownerPhone  ? { owner_phone:   ownerPhone }  : {}),
-        ...(vehicleType ? { vehicle_type:  vehicleType } : {}),
+        ...(ownerName       ? { owner_name:       ownerName }       : {}),
+        ...(ownerPhone      ? { owner_phone:       ownerPhone }      : {}),
+        ...(vehicleType     ? { vehicle_type:      vehicleType }     : {}),
+        ...(carMake         ? { car_make:          carMake }         : {}),
+        ...(carDescription  ? { car_description:   carDescription }  : {}),
       }).eq("id", vehicleId);
     }
   } else {
     const { data: newVehicle, error: vErr } = await supabase
       .from("vehicles")
-      .insert({ license_plate: plate, owner_name: ownerName ?? null, owner_phone: ownerPhone ?? null, vehicle_type: vehicleType ?? null })
+      .insert({
+        license_plate:   plate,
+        owner_name:      ownerName      ?? null,
+        owner_phone:     ownerPhone     ?? null,
+        vehicle_type:    vehicleType    ?? null,
+        car_make:        carMake        ?? null,
+        car_description: carDescription ?? null,
+      })
       .select("id")
       .single();
     if (vErr) return Response.json({ error: vErr.message }, { status: 500 });

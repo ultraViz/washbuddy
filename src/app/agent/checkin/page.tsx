@@ -11,54 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import {
-  Camera, ScanLine, Loader2, CheckCircle2, ArrowLeft,
-  Car, User, Phone, ChevronRight, QrCode
+  ScanLine, Loader2, CheckCircle2, ArrowLeft,
+  Car, User, Phone, ChevronRight
 } from "lucide-react";
 import Link from "next/link";
-import { Pdf417Scanner } from "@/components/pdf417-scanner";
-
-/**
- * Parse the PDF417 barcode from a South African vehicle licence disc.
- *
- * SA licence discs encode data in pipe-delimited fields. The registration
- * number always starts with 2–3 letters followed by digits (e.g. CF236848,
- * CA 123 456, ABC 123 GP). We must NOT match all-alpha words like "WOIDELAI".
- */
-function parseLicenceDisc(raw: string): { plate: string; ownerName?: string } {
-  const upper = raw.toUpperCase();
-
-  // Split on common delimiters — pipe, newline, or tab
-  const delim = upper.includes("|") ? "|" : upper.includes("\n") ? "\n" : "\t";
-  const fields = upper.split(delim).map(f => f.trim()).filter(Boolean);
-
-  // SA plate patterns — ordered most-specific first.
-  // Critical rule: must start with letters AND contain digits.
-  const patterns = [
-    /^[A-Z]{2}\d{6}$/,                      // CF236848  (2 letters + 6 digits)
-    /^[A-Z]{2}\s\d{2}\s\d{2}\s\d{2}$/,      // CF 23 68 48
-    /^[A-Z]{2,3}\s\d{3}\s\d{3}$/,            // CA 123 456
-    /^[A-Z]{2,3}\s?\d{3,6}\s?[A-Z]{0,2}$/,  // general: letters then digits (optional suffix)
-  ];
-
-  let plate = "";
-  for (const re of patterns) {
-    const hit = fields.find(f => re.test(f));
-    if (hit) { plate = hit.replace(/\s+/g, ""); break; }
-  }
-
-  // Last resort: any field that starts with 2 letters then has ≥4 digits
-  if (!plate) {
-    const hit = fields.find(f => /^[A-Z]{2,3}\d/.test(f) && (f.match(/\d/g) ?? []).length >= 4);
-    if (hit) plate = hit.replace(/\s+/g, "");
-  }
-
-  // Owner name: longest all-alpha field (spaces OK) that isn't the plate
-  const ownerName = fields
-    .filter(f => f !== plate && f.length > 5 && /^[A-Z][A-Z\s]+$/.test(f) && !/\d/.test(f))
-    .sort((a, b) => b.length - a.length)[0];
-
-  return { plate, ownerName };
-}
 
 type Service = { id: string; name: string; price: number };
 
@@ -66,7 +22,6 @@ const VEHICLE_TYPES = ["Car", "Bakkies/SUV", "Minibus", "Truck"];
 
 export default function CheckInPage() {
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const plateInputRef = useRef<HTMLInputElement>(null);
   const [services, setServices] = useState<Service[]>([]);
 
@@ -74,11 +29,11 @@ export default function CheckInPage() {
   const [ownerName, setOwnerName] = useState("");
   const [ownerPhone, setOwnerPhone] = useState("");
   const [vehicleType, setVehicleType] = useState("");
+  const [carMake, setCarMake] = useState("");
+  const [carDescription, setCarDescription] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [isReturning, setIsReturning] = useState(false);
 
-  const [scanning, setScanning] = useState(false);
-  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -89,44 +44,6 @@ export default function CheckInPage() {
       .catch(() => toast.error("Failed to load services"));
     plateInputRef.current?.focus();
   }, []);
-
-  function handleBarcodeResult(raw: string) {
-    setShowBarcodeScanner(false);
-    const { plate, ownerName: parsedOwner } = parseLicenceDisc(raw);
-    if (!plate) {
-      // Show raw data so the agent can copy the plate manually
-      toast.warning(`Could not extract plate — raw: ${raw.slice(0, 60)}`, { duration: 8000 });
-      return;
-    }
-    setPlate(plate);
-    if (parsedOwner && !ownerName) setOwnerName(parsedOwner);
-    toast.success(`Scanned: ${plate}`);
-    lookupVehicle(plate);
-  }
-
-  async function handleImageScan(file: File) {
-    setScanning(true);
-    try {
-      const { createWorker } = await import("tesseract.js");
-      const worker = await createWorker("eng");
-      const { data: { text } } = await worker.recognize(file);
-      await worker.terminate();
-
-      const cleaned = text.replace(/\s+/g, "").toUpperCase();
-      const match = cleaned.match(/[A-Z0-9]{4,8}/);
-      if (match) {
-        setPlate(match[0]);
-        toast.success(`Detected: ${match[0]}`);
-        lookupVehicle(match[0]);
-      } else {
-        toast.warning("Could not detect plate — enter manually");
-      }
-    } catch {
-      toast.error("OCR failed — enter plate manually");
-    } finally {
-      setScanning(false);
-    }
-  }
 
   async function lookupVehicle(licensePlate: string) {
     const p = licensePlate.toUpperCase().trim();
@@ -141,10 +58,13 @@ export default function CheckInPage() {
           setOwnerName(v.ownerName ?? "");
           setOwnerPhone(v.ownerPhone ?? "");
           setVehicleType(v.vehicleType ?? "");
+          setCarMake(v.carMake ?? "");
+          setCarDescription(v.carDescription ?? "");
           setIsReturning(true);
           toast.info("Returning customer — details loaded");
         } else {
           setOwnerName(""); setOwnerPhone(""); setVehicleType("");
+          setCarMake(""); setCarDescription("");
           setIsReturning(false);
         }
       }
@@ -167,6 +87,8 @@ export default function CheckInPage() {
           ownerName: ownerName.trim() || null,
           ownerPhone: ownerPhone.trim() || null,
           vehicleType: vehicleType || null,
+          carMake: carMake.trim() || null,
+          carDescription: carDescription.trim() || null,
           serviceId,
         }),
       });
@@ -184,13 +106,6 @@ export default function CheckInPage() {
   const canSubmit = plate.trim().length >= 3 && !!serviceId;
 
   return (
-    <>
-    {showBarcodeScanner && (
-      <Pdf417Scanner
-        onResult={handleBarcodeResult}
-        onClose={() => setShowBarcodeScanner(false)}
-      />
-    )}
     <div className="max-w-lg mx-auto space-y-5">
       {/* Header */}
       <div className="flex items-center gap-3">
@@ -231,40 +146,7 @@ export default function CheckInPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="gap-2 min-h-[44px] border-dashed"
-                disabled={scanning}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {scanning
-                  ? <><Loader2 size={15} className="animate-spin" /> Scanning...</>
-                  : <><Camera size={15} /> Photo OCR</>
-                }
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="gap-2 min-h-[44px] border-dashed"
-                onClick={() => setShowBarcodeScanner(true)}
-              >
-                <QrCode size={15} /> Scan Barcode
-              </Button>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={e => {
-                const file = e.target.files?.[0];
-                if (file) handleImageScan(file);
-                e.target.value = "";
-              }}
-            />
+            {/* Scan buttons hidden — not working reliably yet */}
 
             {isReturning && (
               <div className="flex items-center gap-2 p-2.5 bg-green-50 border border-green-200 rounded-lg text-green-700 text-xs">
@@ -299,7 +181,7 @@ export default function CheckInPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs flex items-center gap-1"><User size={11} /> Name</Label>
+                <Label className="text-xs flex items-center gap-1"><User size={11} /> Owner Name</Label>
                 <Input
                   placeholder="John Doe"
                   value={ownerName}
@@ -314,6 +196,26 @@ export default function CheckInPage() {
                   type="tel"
                   value={ownerPhone}
                   onChange={e => setOwnerPhone(e.target.value)}
+                  className="min-h-[44px]"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs flex items-center gap-1"><Car size={11} /> Car Make</Label>
+                <Input
+                  placeholder="Toyota, VW, BMW..."
+                  value={carMake}
+                  onChange={e => setCarMake(e.target.value)}
+                  className="min-h-[44px]"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Colour / Description</Label>
+                <Input
+                  placeholder="White Corolla, red..."
+                  value={carDescription}
+                  onChange={e => setCarDescription(e.target.value)}
                   className="min-h-[44px]"
                 />
               </div>
@@ -383,6 +285,5 @@ export default function CheckInPage() {
         </Button>
       </form>
     </div>
-    </>
   );
 }
