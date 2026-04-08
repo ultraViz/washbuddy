@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   LayoutDashboard, Settings2, Users, Plus, DollarSign,
-  CarFront, Activity, UserPlus, Pencil, Trash2, Loader2, BarChart2
+  CarFront, Activity, UserPlus, Pencil, Trash2, Loader2, BarChart2, RefreshCw
 } from "lucide-react";
 
 type Service = { id: string; name: string; price: number };
@@ -21,9 +21,10 @@ type Metrics = {
 };
 type DailyStat   = { date:  string; washes: number; revenue: number };
 type MonthlyStat = { month: string; washes: number; revenue: number };
+type LogEntry    = { id: string; agent_name: string; action: string; description: string; created_at: string };
 
 export default function AdminPage() {
-  const [tab, setTab] = useState<"overview" | "services" | "agents" | "history">("overview");
+  const [tab, setTab] = useState<"overview" | "services" | "agents" | "history" | "logs">("overview");
   const [metrics, setMetrics]   = useState<Metrics | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [agents, setAgents]     = useState<Agent[]>([]);
@@ -52,6 +53,9 @@ export default function AdminPage() {
   const [daily, setDaily]     = useState<DailyStat[]>([]);
   const [monthly, setMonthly] = useState<MonthlyStat[]>([]);
 
+  // ── Logs ───────────────────────────────────────────────────────────────────
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+
   // ── Confirm delete dialog ──────────────────────────────────────────────────
   const [confirmDelete, setConfirmDelete] = useState<{ type: "service" | "agent"; id: string; name: string } | null>(null);
 
@@ -74,6 +78,9 @@ export default function AdminPage() {
           setDaily(d.daily ?? []);
           setMonthly(d.monthly ?? []);
         }
+      } else if (t === "logs") {
+        const r = await fetch("/api/admin/logs?limit=200");
+        if (r.ok) setLogs(await r.json());
       }
     } catch { toast.error("Failed to load data"); }
     finally { setLoading(false); }
@@ -199,6 +206,7 @@ export default function AdminPage() {
           { key: "services",  label: "Services",  icon: Settings2 },
           { key: "agents",    label: "Agents",    icon: Users },
           { key: "history",   label: "History",   icon: BarChart2 },
+          { key: "logs",      label: "Activity",  icon: Activity },
         ] as const).map(({ key, label, icon: Icon }) => (
           <Button
             key={key}
@@ -295,6 +303,59 @@ export default function AdminPage() {
                         </CardContent>
                       </Card>
                     ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── ACTIVITY LOGS ── */}
+            {tab === "logs" && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">
+                    Last 200 actions
+                  </p>
+                  <Button variant="outline" size="sm" className="gap-1.5 min-h-[36px]" onClick={() => load("logs")}>
+                    <RefreshCw size={13} /> Refresh
+                  </Button>
+                </div>
+
+                {logs.length === 0 ? (
+                  <div className="border-2 border-dashed p-12 text-center rounded-xl text-muted-foreground">
+                    No activity logged yet.
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-border overflow-hidden">
+                    {logs.map((log, i) => {
+                      const actionColors: Record<string, string> = {
+                        CHECK_IN:  "bg-blue-100 text-blue-700",
+                        ADVANCE:   "bg-amber-100 text-amber-700",
+                        COMPLETE:  "bg-green-100 text-green-700",
+                        CANCEL:    "bg-red-100 text-red-700",
+                      };
+                      const color = actionColors[log.action] ?? "bg-muted text-muted-foreground";
+                      const date  = new Date(log.created_at);
+                      const dateStr = date.toLocaleDateString("en-ZA", { day: "2-digit", month: "short" });
+                      const timeStr = date.toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" });
+                      return (
+                        <div
+                          key={log.id}
+                          className={`flex items-start gap-3 px-4 py-3 text-sm ${i % 2 === 0 ? "bg-background" : "bg-muted/20"} border-b border-border last:border-0`}
+                        >
+                          <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full mt-0.5 ${color}`}>
+                            {log.action.replace("_", " ")}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-foreground">{log.description}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{log.agent_name}</p>
+                          </div>
+                          <div className="shrink-0 text-right text-xs text-muted-foreground">
+                            <p>{dateStr}</p>
+                            <p>{timeStr}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

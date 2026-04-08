@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { logActivity } from "@/lib/log";
 
 export async function GET() {
   const session = await auth();
@@ -104,6 +105,16 @@ export async function POST(request: Request) {
     .single();
 
   if (qErr) return Response.json({ error: qErr.message }, { status: 500 });
+
+  const agentName = (session.user as any)?.name ?? "Unknown";
+  logActivity({
+    businessId: businessId,
+    agentName,
+    action: "CHECK_IN",
+    description: `Checked in ${plate} for ${
+      (await supabase.from("services").select("name").eq("id", serviceId).maybeSingle()).data?.name ?? "service"
+    }${vehicleType ? ` (${vehicleType})` : ""}${ownerName ? ` — owner: ${ownerName}` : ""}`,
+  });
 
   return Response.json({ id: item.id }, { status: 201 });
 }

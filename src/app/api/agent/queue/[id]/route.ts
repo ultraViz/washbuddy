@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { logActivity } from "@/lib/log";
 
 const STATUS_ORDER = ["IN_QUEUE", "WASH_BAY", "FINISHING_BAY", "COMPLETED"];
 
@@ -18,12 +19,16 @@ export async function PATCH(
 
   const { data: item } = await supabase
     .from("queue_items")
-    .select("status")
+    .select("status, vehicles(license_plate), services(name)")
     .eq("id", id)
     .eq("business_id", businessId)
     .maybeSingle();
 
   if (!item) return Response.json({ error: "Not found" }, { status: 404 });
+
+  const agentName = (session.user as any)?.name ?? "Unknown";
+  const plate = (item as any).vehicles?.license_plate ?? "?";
+  const serviceName = (item as any).services?.name ?? "service";
 
   if (action === "advance") {
     const currentIndex = STATUS_ORDER.indexOf(item.status);
@@ -44,6 +49,20 @@ export async function PATCH(
       .eq("id", id);
 
     if (error) return Response.json({ error: error.message }, { status: 500 });
+
+    const actionLabel = isCompleting ? "COMPLETE" : "ADVANCE";
+    const statusLabel: Record<string, string> = {
+      WASH_BAY: "Wash Bay", FINISHING_BAY: "Finishing Bay", COMPLETED: "Completed",
+    };
+    logActivity({
+      businessId,
+      agentName,
+      action: actionLabel,
+      description: isCompleting
+        ? `Completed ${plate} (${serviceName}) — R${totalAmount ?? ""} via ${paymentMethod ?? "cash"}`
+        : `Moved ${plate} (${serviceName}) to ${statusLabel[nextStatus] ?? nextStatus}`,
+    });
+
     return Response.json({ status: nextStatus });
   }
 
@@ -58,6 +77,14 @@ export async function PATCH(
       .eq("id", id);
 
     if (error) return Response.json({ error: error.message }, { status: 500 });
+
+    logActivity({
+      businessId,
+      agentName,
+      action: "CANCEL",
+      description: `Cancelled job for ${plate} (${serviceName})`,
+    });
+
     return Response.json({ status: "CANCELLED" });
   }
 

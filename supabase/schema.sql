@@ -58,12 +58,22 @@ CREATE TABLE IF NOT EXISTS queue_items (
   completed_at   TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id  UUID NOT NULL REFERENCES businesses(id),
+  agent_name   TEXT NOT NULL,
+  action       TEXT NOT NULL,
+  description  TEXT NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ── Disable RLS for development ────────────────────────────────────────────
 -- Remove these lines and add proper policies before going to production
 
-ALTER TABLE businesses  DISABLE ROW LEVEL SECURITY;
-ALTER TABLE users       DISABLE ROW LEVEL SECURITY;
-ALTER TABLE services    DISABLE ROW LEVEL SECURITY;
-ALTER TABLE agents      DISABLE ROW LEVEL SECURITY;
-ALTER TABLE vehicles    DISABLE ROW LEVEL SECURITY;
-ALTER TABLE queue_items DISABLE ROW LEVEL SECURITY;
+ALTER TABLE businesses    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE users         DISABLE ROW LEVEL SECURITY;
+ALTER TABLE services      DISABLE ROW LEVEL SECURITY;
+ALTER TABLE agents        DISABLE ROW LEVEL SECURITY;
+ALTER TABLE vehicles      DISABLE ROW LEVEL SECURITY;
+ALTER TABLE queue_items   DISABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_logs DISABLE ROW LEVEL SECURITY;
