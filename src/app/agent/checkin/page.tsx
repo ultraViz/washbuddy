@@ -19,22 +19,43 @@ import { Pdf417Scanner } from "@/components/pdf417-scanner";
 
 /**
  * Parse the PDF417 barcode from a South African vehicle licence disc.
- * The data is pipe-delimited. Registration number is typically field index 1.
- * Falls back to extracting the first SA-style plate pattern found.
+ *
+ * SA licence discs encode data in pipe-delimited fields. The registration
+ * number always starts with 2–3 letters followed by digits (e.g. CF236848,
+ * CA 123 456, ABC 123 GP). We must NOT match all-alpha words like "WOIDELAI".
  */
-function parseLicenceDisc(raw: string): { plate: string; vehicleType?: string; ownerName?: string } {
-  // SA licence disc: pipe-delimited fields
-  // e.g. |REGISTRATION|VIN|ENGINE|...|OWNER_NAME|...
-  const fields = raw.split("|").map(f => f.trim()).filter(Boolean);
+function parseLicenceDisc(raw: string): { plate: string; ownerName?: string } {
+  const upper = raw.toUpperCase();
 
-  // Field 0 or 1 is usually the registration
-  const plateField = fields.find(f => /^[A-Z]{2,3}\s?\d{2,3}\s?[A-Z]{2,3}$/.test(f))
-    ?? fields.find(f => /^[A-Z0-9]{4,8}$/.test(f));
+  // Split on common delimiters — pipe, newline, or tab
+  const delim = upper.includes("|") ? "|" : upper.includes("\n") ? "\n" : "\t";
+  const fields = upper.split(delim).map(f => f.trim()).filter(Boolean);
 
-  const plate = plateField ?? raw.replace(/\s+/g, "").toUpperCase().match(/[A-Z0-9]{4,8}/)?.[0] ?? "";
+  // SA plate patterns — ordered most-specific first.
+  // Critical rule: must start with letters AND contain digits.
+  const patterns = [
+    /^[A-Z]{2}\d{6}$/,                      // CF236848  (2 letters + 6 digits)
+    /^[A-Z]{2}\s\d{2}\s\d{2}\s\d{2}$/,      // CF 23 68 48
+    /^[A-Z]{2,3}\s\d{3}\s\d{3}$/,            // CA 123 456
+    /^[A-Z]{2,3}\s?\d{3,6}\s?[A-Z]{0,2}$/,  // general: letters then digits (optional suffix)
+  ];
 
-  // Try to grab owner name — often a longer all-caps field
-  const ownerName = fields.find(f => f.length > 8 && /^[A-Z\s]+$/.test(f) && f !== plateField) ?? undefined;
+  let plate = "";
+  for (const re of patterns) {
+    const hit = fields.find(f => re.test(f));
+    if (hit) { plate = hit.replace(/\s+/g, ""); break; }
+  }
+
+  // Last resort: any field that starts with 2 letters then has ≥4 digits
+  if (!plate) {
+    const hit = fields.find(f => /^[A-Z]{2,3}\d/.test(f) && (f.match(/\d/g) ?? []).length >= 4);
+    if (hit) plate = hit.replace(/\s+/g, "");
+  }
+
+  // Owner name: longest all-alpha field (spaces OK) that isn't the plate
+  const ownerName = fields
+    .filter(f => f !== plate && f.length > 5 && /^[A-Z][A-Z\s]+$/.test(f) && !/\d/.test(f))
+    .sort((a, b) => b.length - a.length)[0];
 
   return { plate, ownerName };
 }
@@ -73,7 +94,8 @@ export default function CheckInPage() {
     setShowBarcodeScanner(false);
     const { plate, ownerName: parsedOwner } = parseLicenceDisc(raw);
     if (!plate) {
-      toast.warning("Could not read plate from barcode — enter manually");
+      // Show raw data so the agent can copy the plate manually
+      toast.warning(`Could not extract plate — raw: ${raw.slice(0, 60)}`, { duration: 8000 });
       return;
     }
     setPlate(plate);
