@@ -12,9 +12,32 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import {
   Camera, ScanLine, Loader2, CheckCircle2, ArrowLeft,
-  Car, User, Phone, ChevronRight
+  Car, User, Phone, ChevronRight, QrCode
 } from "lucide-react";
 import Link from "next/link";
+import { Pdf417Scanner } from "@/components/pdf417-scanner";
+
+/**
+ * Parse the PDF417 barcode from a South African vehicle licence disc.
+ * The data is pipe-delimited. Registration number is typically field index 1.
+ * Falls back to extracting the first SA-style plate pattern found.
+ */
+function parseLicenceDisc(raw: string): { plate: string; vehicleType?: string; ownerName?: string } {
+  // SA licence disc: pipe-delimited fields
+  // e.g. |REGISTRATION|VIN|ENGINE|...|OWNER_NAME|...
+  const fields = raw.split("|").map(f => f.trim()).filter(Boolean);
+
+  // Field 0 or 1 is usually the registration
+  const plateField = fields.find(f => /^[A-Z]{2,3}\s?\d{2,3}\s?[A-Z]{2,3}$/.test(f))
+    ?? fields.find(f => /^[A-Z0-9]{4,8}$/.test(f));
+
+  const plate = plateField ?? raw.replace(/\s+/g, "").toUpperCase().match(/[A-Z0-9]{4,8}/)?.[0] ?? "";
+
+  // Try to grab owner name — often a longer all-caps field
+  const ownerName = fields.find(f => f.length > 8 && /^[A-Z\s]+$/.test(f) && f !== plateField) ?? undefined;
+
+  return { plate, ownerName };
+}
 
 type Service = { id: string; name: string; price: number };
 
@@ -34,6 +57,7 @@ export default function CheckInPage() {
   const [isReturning, setIsReturning] = useState(false);
 
   const [scanning, setScanning] = useState(false);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -44,6 +68,19 @@ export default function CheckInPage() {
       .catch(() => toast.error("Failed to load services"));
     plateInputRef.current?.focus();
   }, []);
+
+  function handleBarcodeResult(raw: string) {
+    setShowBarcodeScanner(false);
+    const { plate, ownerName: parsedOwner } = parseLicenceDisc(raw);
+    if (!plate) {
+      toast.warning("Could not read plate from barcode — enter manually");
+      return;
+    }
+    setPlate(plate);
+    if (parsedOwner && !ownerName) setOwnerName(parsedOwner);
+    toast.success(`Scanned: ${plate}`);
+    lookupVehicle(plate);
+  }
 
   async function handleImageScan(file: File) {
     setScanning(true);
@@ -125,6 +162,13 @@ export default function CheckInPage() {
   const canSubmit = plate.trim().length >= 3 && !!serviceId;
 
   return (
+    <>
+    {showBarcodeScanner && (
+      <Pdf417Scanner
+        onResult={handleBarcodeResult}
+        onClose={() => setShowBarcodeScanner(false)}
+      />
+    )}
     <div className="max-w-lg mx-auto space-y-5">
       {/* Header */}
       <div className="flex items-center gap-3">
@@ -165,18 +209,28 @@ export default function CheckInPage() {
               </div>
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full gap-2 min-h-[44px] border-dashed"
-              disabled={scanning}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {scanning
-                ? <><Loader2 size={15} className="animate-spin" /> Scanning plate...</>
-                : <><Camera size={15} /> Take Photo to Scan Plate</>
-              }
-            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2 min-h-[44px] border-dashed"
+                disabled={scanning}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {scanning
+                  ? <><Loader2 size={15} className="animate-spin" /> Scanning...</>
+                  : <><Camera size={15} /> Photo OCR</>
+                }
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2 min-h-[44px] border-dashed"
+                onClick={() => setShowBarcodeScanner(true)}
+              >
+                <QrCode size={15} /> Scan Barcode
+              </Button>
+            </div>
             <input
               ref={fileInputRef}
               type="file"
@@ -307,5 +361,6 @@ export default function CheckInPage() {
         </Button>
       </form>
     </div>
+    </>
   );
 }
