@@ -18,7 +18,7 @@ import Link from "next/link";
 
 type Service = { id: string; name: string; price: number };
 
-const VEHICLE_TYPES = ["Sedan", "SUV", "Truck", "Van", "Hatchback", "Coupe", "Convertible", "Other"];
+const VEHICLE_TYPES = ["Car", "Bakkies/SUV", "Minibus", "Truck"];
 
 export default function CheckInPage() {
   const router = useRouter();
