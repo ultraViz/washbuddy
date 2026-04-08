@@ -39,6 +39,7 @@ export default function AdminPage() {
 
   // ── Agent modal ────────────────────────────────────────────────────────────
   const [aOpen, setAOpen]       = useState(false);
+  const [editAgent, setEditAgent] = useState<Agent | null>(null);
   const [aName, setAName]       = useState("");
   const [aPhone, setAPhone]     = useState("");
   const [aEmail, setAEmail]     = useState("");
@@ -125,23 +126,50 @@ export default function AdminPage() {
     finally { setDeletingService(null); }
   }
 
-  async function createAgent(e: React.SyntheticEvent<HTMLFormElement>) {
+  function openAddAgent() {
+    setEditAgent(null);
+    setAName(""); setAPhone(""); setAEmail(""); setAPassword("password123");
+    setAOpen(true);
+  }
+
+  function openEditAgent(a: Agent) {
+    setEditAgent(a);
+    setAName(a.name); setAPhone(a.phone ?? ""); setAEmail(a.email ?? ""); setAPassword("");
+    setAOpen(true);
+  }
+
+  async function saveAgent(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setASaving(true);
     try {
-      const res = await fetch("/api/admin/agents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: aName, phone: aPhone, email: aEmail, password: aPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      toast.success("Agent created!");
+      if (editAgent) {
+        const res = await fetch(`/api/admin/agents/${editAgent.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name:     aName     || undefined,
+            phone:    aPhone    || undefined,
+            email:    aEmail    || undefined,
+            password: aPassword || undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        toast.success("Agent updated!");
+      } else {
+        const res = await fetch("/api/admin/agents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: aName, phone: aPhone, email: aEmail, password: aPassword }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        toast.success("Agent created!");
+      }
       setAOpen(false);
-      setAName(""); setAPhone(""); setAEmail(""); setAPassword("password123");
       load("agents");
     } catch (err: any) {
-      toast.error(err.message || "Failed to create agent");
+      toast.error(err.message || "Failed to save agent");
     } finally { setASaving(false); }
   }
 
@@ -361,7 +389,7 @@ export default function AdminPage() {
             {tab === "agents" && (
               <div className="space-y-4">
                 <div className="flex justify-end">
-                  <Button onClick={() => setAOpen(true)} className="gap-2 bg-primary min-h-[44px]">
+                  <Button onClick={openAddAgent} className="gap-2 bg-primary min-h-[44px]">
                     <UserPlus size={16} /> Add Agent
                   </Button>
                 </div>
@@ -382,6 +410,13 @@ export default function AdminPage() {
                             {a.email && <p className="text-xs text-muted-foreground truncate">{a.email}</p>}
                             {a.phone && <p className="text-xs text-muted-foreground">{a.phone}</p>}
                           </div>
+                          <Button
+                            variant="ghost" size="icon"
+                            className="h-9 w-9 text-muted-foreground hover:text-primary shrink-0"
+                            onClick={() => openEditAgent(a)}
+                          >
+                            <Pencil size={14} />
+                          </Button>
                           <Button
                             variant="ghost" size="icon"
                             className="h-9 w-9 text-muted-foreground hover:text-destructive shrink-0"
@@ -425,32 +460,37 @@ export default function AdminPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Agent add modal ── */}
+      {/* ── Agent add/edit modal ── */}
       <Dialog open={aOpen} onOpenChange={setAOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Add Agent</DialogTitle>
-            <DialogDescription>Create a login account for a new agent.</DialogDescription>
+            <DialogTitle>{editAgent ? "Edit Agent" : "Add Agent"}</DialogTitle>
+            <DialogDescription>
+              {editAgent ? `Editing "${editAgent.name}". Leave password blank to keep it unchanged.` : "Create a login account for a new agent."}
+            </DialogDescription>
           </DialogHeader>
-          <form onSubmit={createAgent} className="space-y-4 pt-1">
+          <form onSubmit={saveAgent} className="space-y-4 pt-1">
             <div className="space-y-1.5">
               <Label>Full Name *</Label>
               <Input required value={aName} onChange={e => setAName(e.target.value)} placeholder="Alice Dlamini" className="min-h-[44px]" />
             </div>
             <div className="space-y-1.5">
-              <Label>Email (Login) *</Label>
-              <Input required type="email" value={aEmail} onChange={e => setAEmail(e.target.value)} placeholder="alice@washbuddy.com" className="min-h-[44px]" />
+              <Label>Email (Login){editAgent ? "" : " *"}</Label>
+              <Input required={!editAgent} type="email" value={aEmail} onChange={e => setAEmail(e.target.value)} placeholder="alice@washbuddy.com" className="min-h-[44px]" />
             </div>
             <div className="space-y-1.5">
               <Label>Phone</Label>
               <Input value={aPhone} onChange={e => setAPhone(e.target.value)} placeholder="082 000 0000" className="min-h-[44px]" />
             </div>
             <div className="space-y-1.5">
-              <Label>Password *</Label>
-              <Input required value={aPassword} onChange={e => setAPassword(e.target.value)} className="min-h-[44px]" />
+              <Label>Password{editAgent ? " (leave blank to keep)" : " *"}</Label>
+              <Input required={!editAgent} type="password" value={aPassword} onChange={e => setAPassword(e.target.value)} placeholder={editAgent ? "••••••••" : ""} className="min-h-[44px]" />
             </div>
             <Button type="submit" className="w-full min-h-[44px] bg-primary" disabled={aSaving}>
-              {aSaving ? <><Loader2 size={16} className="animate-spin mr-2" />Creating...</> : "Create Agent"}
+              {aSaving
+                ? <><Loader2 size={16} className="animate-spin mr-2" />{editAgent ? "Saving..." : "Creating..."}</>
+                : editAgent ? "Save Changes" : "Create Agent"
+              }
             </Button>
           </form>
         </DialogContent>

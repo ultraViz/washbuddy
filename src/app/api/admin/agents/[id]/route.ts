@@ -2,6 +2,58 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth();
+  const user = session?.user as any;
+  if (user?.role !== "ADMIN" || !user?.businessId)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  const { name, phone, email, password } = await req.json();
+
+  // Get current agent name (used to find linked user)
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("name")
+    .eq("id", id)
+    .eq("business_id", user.businessId)
+    .maybeSingle();
+
+  if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+
+  // Update agents table
+  const { error: aErr } = await supabase
+    .from("agents")
+    .update({
+      ...(name  != null ? { name }  : {}),
+      ...(phone != null ? { phone } : {}),
+    })
+    .eq("id", id)
+    .eq("business_id", user.businessId);
+
+  if (aErr) return NextResponse.json({ error: aErr.message }, { status: 500 });
+
+  // Update linked user account (matched by old name)
+  const userUpdates: Record<string, string> = {};
+  if (name)     userUpdates.name     = name;
+  if (email)    userUpdates.email    = email;
+  if (password) userUpdates.password = password;
+
+  if (Object.keys(userUpdates).length > 0) {
+    await supabase
+      .from("users")
+      .update(userUpdates)
+      .eq("name", agent.name)
+      .eq("business_id", user.businessId)
+      .eq("role", "AGENT");
+  }
+
+  return NextResponse.json({ success: true });
+}
+
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
