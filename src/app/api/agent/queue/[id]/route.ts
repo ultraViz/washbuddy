@@ -47,5 +47,19 @@ export async function PATCH(
     return Response.json({ status: nextStatus });
   }
 
+  if (action === "cancel") {
+    const cancellable = ["IN_QUEUE", "WASH_BAY", "FINISHING_BAY"];
+    if (!cancellable.includes(item.status)) {
+      return Response.json({ error: "Cannot cancel this item" }, { status: 400 });
+    }
+    const { error } = await supabase
+      .from("queue_items")
+      .update({ status: "CANCELLED", completed_at: new Date().toISOString() })
+      .eq("id", id);
+
+    if (error) return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ status: "CANCELLED" });
+  }
+
   return Response.json({ error: "Unknown action" }, { status: 400 });
 }

@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   LayoutDashboard, Settings2, Users, Plus, DollarSign,
-  CarFront, Activity, UserPlus, Pencil, Trash2, Loader2
+  CarFront, Activity, UserPlus, Pencil, Trash2, Loader2, BarChart2
 } from "lucide-react";
 
 type Service = { id: string; name: string; price: number };
@@ -19,9 +19,11 @@ type Metrics = {
   totalWashes: number; totalRevenue: number;
   todayWashes: number; todayRevenue: number; activeQueueCount: number;
 };
+type DailyStat   = { date:  string; washes: number; revenue: number };
+type MonthlyStat = { month: string; washes: number; revenue: number };
 
 export default function AdminPage() {
-  const [tab, setTab] = useState<"overview" | "services" | "agents">("overview");
+  const [tab, setTab] = useState<"overview" | "services" | "agents" | "history">("overview");
   const [metrics, setMetrics]   = useState<Metrics | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [agents, setAgents]     = useState<Agent[]>([]);
@@ -44,6 +46,11 @@ export default function AdminPage() {
   const [aSaving, setASaving]   = useState(false);
   const [deletingAgent, setDeletingAgent] = useState<string | null>(null);
 
+  // ── History ────────────────────────────────────────────────────────────────
+  const [historyView, setHistoryView] = useState<"daily" | "monthly">("daily");
+  const [daily, setDaily]     = useState<DailyStat[]>([]);
+  const [monthly, setMonthly] = useState<MonthlyStat[]>([]);
+
   // ── Confirm delete dialog ──────────────────────────────────────────────────
   const [confirmDelete, setConfirmDelete] = useState<{ type: "service" | "agent"; id: string; name: string } | null>(null);
 
@@ -59,6 +66,13 @@ export default function AdminPage() {
       } else if (t === "agents") {
         const r = await fetch("/api/admin/agents");
         if (r.ok) setAgents(await r.json());
+      } else if (t === "history") {
+        const r = await fetch("/api/admin/history");
+        if (r.ok) {
+          const d = await r.json();
+          setDaily(d.daily ?? []);
+          setMonthly(d.monthly ?? []);
+        }
       }
     } catch { toast.error("Failed to load data"); }
     finally { setLoading(false); }
@@ -156,6 +170,7 @@ export default function AdminPage() {
           { key: "overview",  label: "Overview",  icon: LayoutDashboard },
           { key: "services",  label: "Services",  icon: Settings2 },
           { key: "agents",    label: "Agents",    icon: Users },
+          { key: "history",   label: "History",   icon: BarChart2 },
         ] as const).map(({ key, label, icon: Icon }) => (
           <Button
             key={key}
@@ -252,6 +267,91 @@ export default function AdminPage() {
                         </CardContent>
                       </Card>
                     ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── HISTORY ── */}
+            {tab === "history" && (
+              <div className="space-y-4">
+                {/* Toggle */}
+                <div className="flex gap-2">
+                  <Button
+                    variant={historyView === "daily" ? "default" : "outline"}
+                    size="sm"
+                    className="min-h-[40px]"
+                    onClick={() => setHistoryView("daily")}
+                  >
+                    Daily
+                  </Button>
+                  <Button
+                    variant={historyView === "monthly" ? "default" : "outline"}
+                    size="sm"
+                    className="min-h-[40px]"
+                    onClick={() => setHistoryView("monthly")}
+                  >
+                    Monthly
+                  </Button>
+                </div>
+
+                {historyView === "daily" && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Last 60 Days</p>
+                    {daily.length === 0 ? (
+                      <div className="border-2 border-dashed p-12 text-center rounded-xl text-muted-foreground">No data yet.</div>
+                    ) : (
+                      <div className="overflow-x-auto rounded-xl border border-border">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/50">
+                            <tr>
+                              <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground">Date</th>
+                              <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Cars Washed</th>
+                              <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Revenue</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {daily.map((row, i) => (
+                              <tr key={row.date} className={i % 2 === 0 ? "bg-background" : "bg-muted/20"}>
+                                <td className="px-4 py-2.5 font-medium">{row.date}</td>
+                                <td className="px-4 py-2.5 text-right">{row.washes}</td>
+                                <td className="px-4 py-2.5 text-right font-semibold text-green-700">R {row.revenue.toFixed(0)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {historyView === "monthly" && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Last 24 Months</p>
+                    {monthly.length === 0 ? (
+                      <div className="border-2 border-dashed p-12 text-center rounded-xl text-muted-foreground">No data yet.</div>
+                    ) : (
+                      <div className="overflow-x-auto rounded-xl border border-border">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/50">
+                            <tr>
+                              <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground">Month</th>
+                              <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Cars Washed</th>
+                              <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Revenue</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {monthly.map((row, i) => (
+                              <tr key={row.month} className={i % 2 === 0 ? "bg-background" : "bg-muted/20"}>
+                                <td className="px-4 py-2.5 font-medium">{row.month}</td>
+                                <td className="px-4 py-2.5 text-right">{row.washes}</td>
+                                <td className="px-4 py-2.5 text-right font-semibold text-green-700">R {row.revenue.toFixed(0)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Car, Clock, RefreshCw, ArrowRight, CheckCircle2, Droplets, Sparkles, Info, Phone, User } from "lucide-react";
+import { Car, Clock, RefreshCw, ArrowRight, CheckCircle2, Droplets, Sparkles, Info, Phone, User, X } from "lucide-react";
 import Link from "next/link";
 
 type QueueItem = {
@@ -79,6 +79,8 @@ export default function AgentPage() {
   const [totalAmount, setTotalAmount] = useState("");
   const [advancing, setAdvancing] = useState<string | null>(null);
   const [infoItem, setInfoItem] = useState<QueueItem | null>(null);
+  const [cancelItem, setCancelItem] = useState<QueueItem | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   const fetchQueue = useCallback(async () => {
     try {
@@ -146,8 +148,31 @@ export default function AgentPage() {
     }
   }
 
-  const active = items.filter(i => i.status !== "COMPLETED");
-  const completed = items.filter(i => i.status === "COMPLETED");
+  async function cancelJob() {
+    if (!cancelItem) return;
+    setCancelling(true);
+    try {
+      const res = await fetch(`/api/agent/queue/${cancelItem.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel" }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Job cancelled");
+      setCancelItem(null);
+      await fetchQueue();
+    } catch {
+      toast.error("Failed to cancel job");
+    } finally {
+      setCancelling(false);
+    }
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const active = items.filter(i => !["COMPLETED", "CANCELLED"].includes(i.status));
+  const completed = items.filter(
+    i => i.status === "COMPLETED" && (i.completedAt ?? "").slice(0, 10) === todayStr
+  );
   const todayRevenue = completed.reduce((s, i) => s + (i.totalAmount ?? i.servicePrice), 0);
 
   return (
@@ -261,23 +286,32 @@ export default function AgentPage() {
                         )}
                       </div>
 
-                      {/* Time + action */}
+                      {/* Time + actions */}
                       <div className="flex items-center justify-between pt-1 border-t border-[--border]">
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Clock size={10} />
                           {elapsed(item.checkInAt)}
                         </span>
-                        <Button
-                          size="sm"
-                          className={`h-8 text-xs px-3 gap-1 ${col.actionClass}`}
-                          disabled={advancing === item.id}
-                          onClick={() => advance(item)}
-                        >
-                          {advancing === item.id
-                            ? "..."
-                            : <><span>{col.action}</span><ArrowRight size={12} /></>
-                          }
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setCancelItem(item)}
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                            title="Cancel job"
+                          >
+                            <X size={13} />
+                          </button>
+                          <Button
+                            size="sm"
+                            className={`h-8 text-xs px-3 gap-1 ${col.actionClass}`}
+                            disabled={advancing === item.id}
+                            onClick={() => advance(item)}
+                          >
+                            {advancing === item.id
+                              ? "..."
+                              : <><span>{col.action}</span><ArrowRight size={12} /></>
+                            }
+                          </Button>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -358,6 +392,34 @@ export default function AgentPage() {
                 <p className="font-semibold text-foreground">{infoItem?.serviceName} — <span className="text-primary">R{infoItem?.servicePrice}</span></p>
               </div>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel job confirmation dialog */}
+      <Dialog open={!!cancelItem} onOpenChange={() => setCancelItem(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <X size={18} className="text-destructive" />
+              Cancel Job?
+            </DialogTitle>
+            <DialogDescription>
+              {cancelItem?.licensePlate} · {cancelItem?.serviceName} will be removed from the queue.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 pt-2">
+            <Button variant="outline" className="flex-1 min-h-[44px]" onClick={() => setCancelItem(null)}>
+              Keep Job
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1 min-h-[44px]"
+              disabled={cancelling}
+              onClick={cancelJob}
+            >
+              {cancelling ? "Cancelling..." : "Yes, Cancel"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
